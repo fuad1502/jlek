@@ -1,0 +1,354 @@
+use std::{
+    fs::{File, OpenOptions},
+    io::Write,
+    path::{Path, PathBuf},
+};
+
+use crate::{
+    TokenSpec,
+    lexer_spec::{LexerSpec, State},
+};
+
+pub fn generate(
+    token_specs: &Vec<TokenSpec>,
+    output_directory: &Path,
+) -> Result<(), std::io::Error> {
+    CodeGen::new(token_specs, output_directory)?.generate()
+}
+
+struct CodeGen {
+    file: File,
+    states: Vec<State>,
+    initial_states: Vec<usize>,
+}
+
+impl CodeGen {
+    fn new(token_specs: &Vec<TokenSpec>, output_directory: &Path) -> Result<Self, std::io::Error> {
+        let file = Self::create_file_at("lexer.rs", output_directory)?;
+        let lexer_spec = LexerSpec::new(token_specs);
+        Ok(Self {
+            file,
+            states: lexer_spec.states,
+            initial_states: lexer_spec.initial_states,
+        })
+    }
+
+    fn create_file_at(name: &str, directory: &Path) -> Result<File, std::io::Error> {
+        let file_path = PathBuf::from(directory).join(name);
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(file_path)
+    }
+
+    fn generate(mut self) -> Result<(), std::io::Error> {
+        self.write_uses()?;
+        self.write_num_of_states()?;
+        self.write_structs()?;
+        self.write_impl_header()?;
+        self.write_impl_new_header()?;
+        self.write_states()?;
+        self.write_initial_states()?;
+        self.write_transition_table()?;
+        self.write_impl_new_footer()?;
+        self.write_impl_others()?;
+        self.write_impl_footer()
+    }
+
+    fn write_uses(&mut self) -> Result<(), std::io::Error> {
+        writeln!(
+            self.file,
+            r#"use std::{{collections::HashMap, fs::File, io::Read, path::Path}};
+
+use crate::symbol::{{Span, Terminal, TerminalClass}};
+"#
+        )
+    }
+
+    fn write_num_of_states(&mut self) -> Result<(), std::io::Error> {
+        writeln!(
+            self.file,
+            "static NUM_OF_STATES: usize = {};",
+            self.states.len()
+        )
+    }
+
+    fn write_structs(&mut self) -> Result<(), std::io::Error> {
+        writeln!(
+            self.file,
+            r#"
+#[derive(Copy, Clone)]
+struct State {{
+    class: Option<TerminalClass>,
+}}
+
+pub struct Lexer {{
+    chars: Vec<u8>,
+    line_start_indices: Vec<usize>,
+    start_pos: usize,
+    current_pos: usize,
+    current_token: Option<Terminal>,
+    states: [State; NUM_OF_STATES],
+    transition_table: Vec<HashMap<char, usize>>,
+    states_stack: Vec<Vec<usize>>,
+}}
+"#
+        )
+    }
+
+    fn write_impl_header(&mut self) -> Result<(), std::io::Error> {
+        writeln!(self.file, "impl Lexer {{")
+    }
+
+    fn write_impl_footer(&mut self) -> Result<(), std::io::Error> {
+        writeln!(self.file, "}}")
+    }
+
+    fn write_impl_new_header(&mut self) -> Result<(), std::io::Error> {
+        write!(
+            self.file,
+            r#"    pub fn from_source_str(source: &str) -> Self {{
+        let chars = source.chars().map(|c| c as u8).collect::<Vec<u8>>();
+        let mut line_start_indices = chars
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| if *c == b'\n' {{ Some(i + 1) }} else {{ None }})
+            .collect::<Vec<usize>>();
+        line_start_indices.insert(0, 0);
+"#
+        )
+    }
+
+    fn write_states(&mut self) -> Result<(), std::io::Error> {
+        Self::write_tab(&mut self.file, 2)?;
+        writeln!(self.file, "let states = [")?;
+        for state in &self.states {
+            Self::write_tab(&mut self.file, 3)?;
+            match &state.accepts {
+                None => writeln!(self.file, "State {{ class: None }},")?,
+                Some(token_name) => writeln!(
+                    self.file,
+                    "State {{ class: Some(TerminalClass::{token_name}) }},"
+                )?,
+            }
+        }
+        Self::write_tab(&mut self.file, 2)?;
+        writeln!(self.file, "];")
+    }
+
+    fn write_initial_states(&mut self) -> Result<(), std::io::Error> {
+        write!(self.file, "        let initial_states = vec![")?;
+        for (i, state) in self.initial_states.iter().enumerate() {
+            write!(self.file, "{state}")?;
+            if i != self.initial_states.len() - 1 {
+                write!(self.file, ", ")?;
+            }
+        }
+        writeln!(self.file, "];")
+    }
+
+    fn write_transition_table(&mut self) -> Result<(), std::io::Error> {
+        for (id, state) in self.states.iter().enumerate() {
+            Self::write_tab(&mut self.file, 2)?;
+            let mut_attr = if state.next.is_empty() { "" } else { "mut" };
+            writeln!(
+                self.file,
+                "let {mut_attr} state_{id}_transitions = HashMap::new();"
+            )?;
+            for (ch, next) in &state.next {
+                Self::write_tab(&mut self.file, 2)?;
+                writeln!(self.file, "state_{id}_transitions.insert('{ch}', {next});")?;
+            }
+        }
+
+        Self::write_tab(&mut self.file, 2)?;
+        writeln!(self.file, "let transition_table = vec![")?;
+        for id in 0..self.states.len() {
+            Self::write_tab(&mut self.file, 3)?;
+            writeln!(self.file, "state_{id}_transitions,")?;
+        }
+        Self::write_tab(&mut self.file, 2)?;
+        writeln!(self.file, "];")
+    }
+
+    fn write_impl_new_footer(&mut self) -> Result<(), std::io::Error> {
+        write!(
+            self.file,
+            r#"
+        Self {{
+            chars,
+            line_start_indices,
+            start_pos: 0,
+            current_pos: 0,
+            current_token: None,
+            states,
+            transition_table,
+            states_stack: vec![initial_states],
+        }}
+    }}
+            "#
+        )
+    }
+
+    fn write_impl_others(&mut self) -> Result<(), std::io::Error> {
+        write!(
+            self.file,
+            r#"
+    pub fn new(source_file: &Path) -> Result<Self, std::io::Error> {{
+        let mut source_file = File::open(source_file)?;
+        let mut source = String::new();
+        let _ = source_file.read_to_string(&mut source)?;
+        Ok(Self::from_source_str(&source))
+    }}
+
+    pub fn next_token(&mut self) -> Result<Terminal, String> {{
+        let token = self.peek_token()?.clone();
+        self.move_start_pos();
+        self.current_token = None;
+        Ok(token)
+    }}
+
+    pub fn peek_token(&mut self) -> Result<&Terminal, String> {{
+        if self.current_token.is_none() {{
+            self.skip_whitespaces();
+            if self.peek_char().is_none() {{
+                let end_token = Terminal::new(TerminalClass::End, self.current_span());
+                self.current_token = Some(end_token);
+            }} else {{
+                self.current_token = Some(self.get()?);
+                _ = self.states_stack.split_off(1);
+            }}
+        }}
+        Ok(self.current_token.as_ref().unwrap())
+    }}
+
+    pub fn get_lexeme(&self, token: &Terminal) -> &str {{
+        str::from_utf8(&self.chars[token.span().start_pos()..token.span().end_pos()]).unwrap()
+    }}
+
+    pub fn show_span(&self, span: &Span) -> String {{
+        let line_number = self
+            .line_start_indices
+            .partition_point(|&i| i <= span.start_pos());
+        let line_start_idx = self.line_start_indices[line_number - 1];
+        let line_end_idx = match self.line_start_indices.get(line_number) {{
+            Some(idx) => idx - 1,
+            None => self.chars.len(),
+        }};
+        let line = &self.chars[line_start_idx..line_end_idx];
+        let line = str::from_utf8(line).unwrap();
+        let span_offset = span.start_pos() - line_start_idx;
+        let span_length = span.end_pos() - span.start_pos();
+        let span_marker = format!(
+            "{{}}{{}}{{}}",
+            " ".repeat(span_offset),
+            "^",
+            "-".repeat(span_length.saturating_sub(1))
+        );
+        format!("Line {{line_number:3}}|{{line}}\n         {{span_marker}}")
+    }}
+
+    fn move_start_pos(&mut self) {{
+        self.start_pos = self.current_pos;
+    }}
+
+    fn get(&mut self) -> Result<Terminal, String> {{
+        loop {{
+            match self.peek_char() {{
+                Some(c) => {{
+                    if self.move_states_on_stack(c) {{
+                        self.read_char();
+                    }} else {{
+                        return self.evaluate_stack();
+                    }}
+                }}
+                None => return self.evaluate_stack(),
+            }}
+        }}
+    }}
+
+    fn move_states_on_stack(&mut self, input: char) -> bool {{
+        let mut new_states = vec![];
+        for state in self.states_stack.last().unwrap() {{
+            if let Some(new_state) = self.transition_table[*state].get(&input) {{
+                new_states.push(*new_state);
+            }}
+        }}
+        if !new_states.is_empty() {{
+            self.states_stack.push(new_states);
+            return true;
+        }}
+        false
+    }}
+
+    fn evaluate_stack(&mut self) -> Result<Terminal, String> {{
+        loop {{
+            let mut accepting_classes = vec![];
+            for state in self.states_stack.last().unwrap() {{
+                if let Some(class) = self.states[*state].class {{
+                    accepting_classes.push(class);
+                }}
+            }}
+            if let Some(prioritized_class) = accepting_classes.iter().copied().min() {{
+                let span = self.current_span();
+                let class = prioritized_class;
+                return Ok(Terminal::new(class, span));
+            }} else if self.states_stack.len() == 1 {{
+                return Err(self.report_error());
+            }} else {{
+                self.states_stack.pop();
+                self.revert_char();
+            }}
+        }}
+    }}
+
+    fn report_error(&self) -> String {{
+        let span_str = self.show_span(&self.current_span());
+        format!(
+            "{{span_str}}\nerror: unexpected character found: {{}}",
+            self.peek_char()
+                .map(|c| c.to_string())
+                .unwrap_or(String::from("EOF"))
+        )
+    }}
+
+    fn peek_char(&self) -> Option<char> {{
+        self.chars.get(self.current_pos).copied().map(|c| c as char)
+    }}
+
+    fn read_char(&mut self) -> Option<char> {{
+        let ch = self.peek_char();
+        if ch.is_some() {{
+            self.current_pos += 1;
+        }}
+        ch
+    }}
+
+    fn revert_char(&mut self) {{
+        self.current_pos -= 1;
+    }}
+
+    fn skip_whitespaces(&mut self) {{
+        while let Some(c) = self.peek_char() {{
+            if c.is_whitespace() {{
+                self.read_char();
+            }} else {{
+                break;
+            }}
+        }}
+        self.move_start_pos();
+    }}
+
+    fn current_span(&self) -> Span {{
+        Span::new(self.start_pos, self.current_pos)
+    }}
+"#
+        )
+    }
+
+    fn write_tab(file: &mut File, indent: usize) -> Result<(), std::io::Error> {
+        let tab = "    ";
+        write!(file, "{}", tab.repeat(indent))
+    }
+}
