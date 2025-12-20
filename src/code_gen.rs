@@ -178,7 +178,11 @@ pub struct Lexer {{
             )?;
             for (ch, next) in &state.next {
                 Self::write_tab(&mut self.file, 2)?;
-                writeln!(self.file, "state_{id}_transitions.insert('{ch}', {next});")?;
+                let esc = if *ch == '\\' { "\\" } else { "" };
+                writeln!(
+                    self.file,
+                    "state_{id}_transitions.insert('{esc}{ch}', {next});"
+                )?;
             }
         }
 
