@@ -248,7 +248,11 @@ pub struct Lexer {{
     }}
 
     pub fn get_lexeme(&self, token: &Terminal) -> &str {{
-        str::from_utf8(&self.chars[token.span().start_pos()..token.span().end_pos()]).unwrap()
+        self.str_from_span(token.span())
+    }}
+
+    pub fn str_from_span(&self, span: &Span) -> &str {{
+        str::from_utf8(&self.chars[span.start_pos()..span.end_pos()]).unwrap()
     }}
 
     pub fn show_span(&self, span: &Span) -> String {{
