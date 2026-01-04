@@ -274,7 +274,10 @@ pub struct Lexer {{
             "^",
             "-".repeat(span_length.saturating_sub(1))
         );
-        format!("Line {{line_number:3}}|{{line}}\n         {{span_marker}}")
+        let blue = "\x1B[34m";
+        let red = "\x1B[31m";
+        let end = "\x1B[0m";
+        format!("{{blue}}Line {{line_number:3}}|{{end}}{{line}}\n         {{red}}{{span_marker}}{{end}}")
     }}
 
     fn move_start_pos(&mut self) {{
@@ -333,8 +336,10 @@ pub struct Lexer {{
 
     fn report_error(&self) -> String {{
         let span_str = self.show_span(&self.current_span());
+        let red = "\x1B[31m";
+        let end = "\x1B[0m";
         format!(
-            "{{span_str}}\nerror: unexpected character found: {{}}",
+            "{{span_str}}\n{{red}}error{{end}}: unexpected character found: {{}}",
             self.peek_char()
                 .map(|c| c.to_string())
                 .unwrap_or(String::from("EOF"))
