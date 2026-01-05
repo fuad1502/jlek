@@ -1,5 +1,7 @@
 # JLEK 🪞
 
+[![CI](https://github.com/fuad1502/jlek/actions/workflows/CI.yml/badge.svg)](https://github.com/fuad1502/jlek/actions/workflows/CI.yml)
+
 > [!NOTE]
 > This project is part of my ["Compiler Toys"
 > project](https://github.com/fuad1502/compiler_toys), originally meant as a
