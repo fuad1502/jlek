@@ -1,4 +1,4 @@
-# JLEK
+# JLEK 🪞
 
 JLEK is a lexer generator similar to Lex. JLEK generates a lexer module from
 token specifications (identifier and regular expression pattern).
