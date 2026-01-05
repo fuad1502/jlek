@@ -1,5 +1,10 @@
 # JLEK 🪞
 
+> [!NOTE]
+> This project is part of my ["Compiler Toys"
+> project](https://github.com/fuad1502/compiler_toys), originally meant as a
+> learning exercise on Compilers.
+
 JLEK is a lexer generator similar to Lex. JLEK generates a lexer module from
 token specifications (identifier and regular expression pattern).
 
