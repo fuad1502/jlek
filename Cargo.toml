@@ -2,5 +2,12 @@
 name = "jlek"
 version = "0.1.0"
 edition = "2024"
+description = "Lexer generator"
+authors = ["Fuad Ismail <fuad1502@gmail.com>"]
+license = "MIT"
+license-file = "LICENSE"
+repository = "https://github.com/fuad1502/jlek"
+readme = "README.md"
+keywords = ["compiler", "lexer"]
 
 [dependencies]
