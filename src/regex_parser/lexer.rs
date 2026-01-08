@@ -18,6 +18,7 @@ pub enum Token {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SpecialToken {
     Lowercase,
+    Uppercase,
     Number,
 }
 
@@ -62,6 +63,7 @@ impl Lexer {
             }
             Some('d') => Ok(Token::Special(SpecialToken::Number)),
             Some('w') => Ok(Token::Special(SpecialToken::Lowercase)),
+            Some('W') => Ok(Token::Special(SpecialToken::Uppercase)),
             _ => Err("Error while parsing special character".to_string()),
         }
     }

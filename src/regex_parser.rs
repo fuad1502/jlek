@@ -102,6 +102,7 @@ impl RegexParser {
             Token::Char(ch) => Ok(self.single_char(ch)),
             Token::Special(SpecialToken::Number) => Ok(self.number()),
             Token::Special(SpecialToken::Lowercase) => Ok(self.lowercase()),
+            Token::Special(SpecialToken::Uppercase) => Ok(self.uppercase()),
             _ => Err("Expected (special) character".to_string()),
         }
     }
@@ -132,6 +133,18 @@ impl RegexParser {
     fn lowercase(&mut self) -> Rc<RegexNode> {
         let mut node = None;
         for ch in 'a'..='z' {
+            match node {
+                None => node = Some(self.single_char(ch)),
+                Some(n) => node = Some(Self::or(n, self.single_char(ch))),
+            }
+            self.alphabet.insert(ch);
+        }
+        node.unwrap()
+    }
+
+    fn uppercase(&mut self) -> Rc<RegexNode> {
+        let mut node = None;
+        for ch in 'A'..='Z' {
             match node {
                 None => node = Some(self.single_char(ch)),
                 Some(n) => node = Some(Self::or(n, self.single_char(ch))),
