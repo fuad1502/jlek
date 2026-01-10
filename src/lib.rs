@@ -41,6 +41,7 @@
 //! ```text
 //! \d      decimal digit (0-9).
 //! \w      lowercase character (a-z).
+//! \W      uppercase character (A-Z).
 //! \       escape character for matching with special characters (`\`, `*`, `|`, `(`, `)`), e.g.
 //!         `\*` matches with "*".
 //! ```
